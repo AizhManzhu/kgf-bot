@@ -1,0 +1,48 @@
+stages:
+  - build
+  - deploy
+
+build-image:
+  stage: build
+  only:
+    - master
+
+  tags:
+    - shell
+
+  script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - docker build
+              --cache-from "$CI_REGISTRY_IMAGE:latest"
+              --tag "$CI_REGISTRY_IMAGE:latest" .
+    
+    - docker push "$CI_REGISTRY_IMAGE:latest"
+    - 'echo Built image size: $(docker inspect -f "{{ .Size }}" $CI_REGISTRY_IMAGE:latest | numfmt --to=si)'
+
+deploy:
+  stage: deploy
+
+  tags:
+    - docker
+
+  image: reg.cic.kz/centras/rancher-cli:latest
+
+
+  script:
+    - rancher up
+              -d
+              --stack kgf-prod
+              --file .deploy/prod/docker-compose.yml
+              --rancher-file .deploy/prod/rancher-compose.yml
+
+    - rancher up
+              -d
+              --file .deploy/prod/docker-compose.yml
+              --rancher-file .deploy/prod/rancher-compose.yml
+              --force-upgrade
+              --pull
+              --stack kgf-prod
+              --confirm-upgrade app frontend bot
+
+  only:
+    - master
